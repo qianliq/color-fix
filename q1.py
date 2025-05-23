@@ -2,15 +2,15 @@ import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.patches import PathPatch
 
-from color_gamut import bt2020_vertices, bt2020_triangle, std_rgb_vertices, std_rgb_triangle, is_in_gamut, find_closest_boundary_point
+from color_gamut import bt2020_vertices, bt2020_triangle, poly_channels_to_xy, std_rgb_vertices, std_rgb_triangle, is_in_gamut, find_closest_boundary_point, xy_to_poly_channels
 from color_utils import generate_points_in_triangle, generate_points_outside_triangle, loss_function
 from color_cnn import train_cnn_model, cnn_map_color_points
 
 # ==================== 可调参数 ====================
-NUM_IN_POINTS = 1000         # BT2020色域内采样点数
-EPOCHS = 300                 # CNN训练轮数
+NUM_IN_POINTS = 10000         # BT2020色域内采样点数
+EPOCHS = 3000                 # CNN训练轮数
 LEARNING_RATE = 1e-2         # 学习率
-FEEDBACK_ROUNDS = 5          # 反馈训练轮数
+FEEDBACK_ROUNDS = 0          # 反馈训练轮数
 FEEDBACK_BATCH = 10          # 每轮反馈采样点数
 
 def batch_map_color_points(points, gamut_triangle, use_cnn=False, cnn_model=None):
@@ -62,7 +62,7 @@ if __name__ == "__main__":
     in_points = generate_points_in_triangle(bt2020_vertices, NUM_IN_POINTS)
     all_points = np.vstack([in_points])
 
-    # 生成训练数据
+    # 生成训练数据（xy转为三通道分量）
     train_points = np.vstack([in_points])
     train_targets = []
     for pt in train_points:
@@ -72,28 +72,33 @@ if __name__ == "__main__":
             train_targets.append(find_closest_boundary_point(pt, std_rgb_triangle))
     train_targets = np.array(train_targets)
 
-    # 训练CNN模型
+    # 新增：xy转为三通道分量
+    train_points_channels = np.array([xy_to_poly_channels(xy, bt2020_vertices) for xy in train_points])
+    train_targets_channels = np.array([xy_to_poly_channels(xy, std_rgb_vertices) for xy in train_targets])
+
+    # 训练CNN模型（输入输出均为三通道分量）
     cnn_model = train_cnn_model(
-        train_points, train_targets,
+        train_points_channels, train_targets_channels,
         epochs=EPOCHS, lr=LEARNING_RATE,
         feedback_rounds=FEEDBACK_ROUNDS, feedback_batch=FEEDBACK_BATCH
     )
 
-    # 用CNN映射
-    mapped_points, losses = batch_map_color_points(all_points, std_rgb_triangle, use_cnn=True, cnn_model=cnn_model)
+    # 用CNN映射（输入三通道，输出三通道，再映射到xy）
+    mapped_channels, _ = batch_map_color_points(train_points_channels, std_rgb_triangle, use_cnn=True, cnn_model=cnn_model)
+    mapped_points = np.array([poly_channels_to_xy(c, std_rgb_vertices) for c in mapped_channels])
+    losses = np.linalg.norm(train_points - mapped_points, axis=1)
 
-    # 展示CNN映射函数的权重和偏置
-    print("\nCNN模型结构与参数：")
-    print(cnn_model)
-    for name, param in cnn_model.named_parameters():
-        print(f"{name}: {param.data.numpy()}")
+    # 随机选取100个点用于可视化
+    idx = np.random.choice(len(train_points), size=100, replace=False)
+    plot_color_mapping(train_points[idx], mapped_points[idx], bt2020_triangle, std_rgb_triangle)
 
-    # 可视化结果
-    plot_color_mapping(all_points, mapped_points, bt2020_triangle, std_rgb_triangle)
-
-    # 打印部分结果
-    print(f"总测试点数: {len(all_points)}")
+    # 打印部分结果（转换为RGB向量后输出）
+    print(f"总测试点数: {len(train_points)}")
     print(f"平均映射损失: {np.mean(losses):.4f}")
     print("\n前5个点映射示例:")
     for i in range(5):
-        print(f"原始点: {all_points[i]}, 映射点: {mapped_points[i]}, 损失: {losses[i]:.4f}")
+        # gamut中的xy_to_poly_channels分别反解为RGB向量
+        rgb_in = xy_to_poly_channels(train_points[i], bt2020_vertices)
+        rgb_out = xy_to_poly_channels(mapped_points[i], std_rgb_vertices)
+        print(f"原始点xy: {train_points[i]}, 映射点xy: {mapped_points[i]}, 损失: {losses[i]:.4f}")
+        print(f"原始RGB: {rgb_in}, 映射RGB: {rgb_out}")

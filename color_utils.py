@@ -1,4 +1,7 @@
 import numpy as np
+from matplotlib.path import Path
+from skimage.color import xyz2lab
+from skimage.color import xyz2lab, deltaE_ciede2000
 
 def xyY_to_XYZ(xyY):
     """将 xyY 转换为 XYZ"""
@@ -19,10 +22,17 @@ def xy_to_XYZ(xy, Y=1.0):
     return np.array([X, Y, Z])
 
 def deltaE_xy(xy1, xy2):
-    """以xy为输入，计算近似deltaE（在Y=1的XYZ空间欧氏距离）"""
+    """
+    以xy为输入，计算更准确的deltaE（CIEDE2000标准）。
+    先转XYZ再转Lab，最后用deltaE2000计算Lab空间距离。
+    参考D65标准光源，Y=1。
+    """
     XYZ1 = xy_to_XYZ(xy1)
     XYZ2 = xy_to_XYZ(xy2)
-    return np.linalg.norm(XYZ1 - XYZ2)
+    Lab1 = xyz2lab(XYZ1[np.newaxis, :], illuminant='D65')
+    Lab2 = xyz2lab(XYZ2[np.newaxis, :], illuminant='D65')
+    # deltaE2000计算
+    return deltaE_ciede2000(Lab1, Lab2)[0]
 
 def loss_function(original_xy, mapped_xy):
     """计算色度损失（欧氏距离）"""
@@ -53,7 +63,6 @@ def generate_points_outside_triangle(vertices, num_points):
 
 def generate_points_in_polygon(vertices, num_points):
     """在多边形内生成均匀分布的随机点（简单拒绝采样法）"""
-    from matplotlib.path import Path
     polygon = Path(vertices)
     min_x, min_y = np.min(vertices, axis=0)
     max_x, max_y = np.max(vertices, axis=0)
