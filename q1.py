@@ -3,7 +3,7 @@ import matplotlib.pyplot as plt
 from matplotlib.patches import PathPatch
 
 from color_gamut import bt2020_vertices, bt2020_triangle, poly_channels_to_xy, std_rgb_vertices, std_rgb_triangle, is_in_gamut, find_closest_boundary_point, xy_to_poly_channels
-from color_utils import generate_points_in_triangle, generate_points_outside_triangle, loss_function
+from color_utils import generate_points_in_triangle, generate_points_outside_triangle
 from color_cnn import train_cnn_model, cnn_map_color_points
 
 # ==================== 可调参数 ====================
