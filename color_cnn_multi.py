@@ -121,13 +121,17 @@ def torch_deltaE2000(Lab1, Lab2):
     return dE
 
 class MultiChannelColorCNN(nn.Module):
-    """多通道到多通道的全连接神经网络"""
+    """多通道到多通道的全连接神经网络（加深网络层数）"""
     def __init__(self, in_channels, out_channels):
         super().__init__()
         self.net = nn.Sequential(
-            nn.Linear(in_channels, 64),
+            nn.Linear(in_channels, 128),
             nn.ReLU(),
-            nn.Linear(64, 128),
+            nn.Linear(128, 256),
+            nn.ReLU(),
+            nn.Linear(256, 256),
+            nn.ReLU(),
+            nn.Linear(256, 128),
             nn.ReLU(),
             nn.Linear(128, 64),
             nn.ReLU(),

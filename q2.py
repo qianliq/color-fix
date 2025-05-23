@@ -6,9 +6,9 @@ from color_gamut import rgbv_vertices, rgbv_polygon, rgbcx_vertices, rgbcx_polyg
 from color_utils import generate_points_in_polygon, loss_function
 from color_cnn_multi import train_cnn_model_multi, cnn_map_color_points_multi
 
-NUM_IN_POINTS = 200             
+NUM_IN_POINTS = 2000  # 内部点数量             
 NUM_BOUNDARY_POINTS = 2000  # 边界点数量远大于内部点
-EPOCHS = 400
+EPOCHS = 4000
 LEARNING_RATE = 1e-2
 FEEDBACK_ROUNDS = 8
 FEEDBACK_BATCH = 20
