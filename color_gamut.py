@@ -22,18 +22,18 @@ std_rgb_triangle = Path(std_rgb_vertices)
 rgbv_vertices = np.array([
     [0.70, 0.30],    # R
     [0.17, 0.80],    # G
-    [0.33, 0.33],    # V
-    [0.14, 0.08]     # B
+    [0.07, 0.60],    # V
+    [0.14, 0.05]     # B
 ])
 rgbv_polygon = Path(rgbv_vertices)
 
 # 5通道RGXCB顶点（可见光范围内，逆时针依次为R、G、X、C、B）
 rgbcx_vertices = np.array([
-    [0.70, 0.30],    # R
-    [0.17, 0.80],    # G
-    [0.33, 0.33],    # X
-    [0.25, 0.40],    # C
-    [0.14, 0.08]     # B
+    [0.65, 0.32],    # R
+    [0.21, 0.72],    # G
+    [0.16, 0.73],    # X
+    [0.07, 0.40],    # C
+    [0.13, 0.08]     # B
 ])
 rgbcx_polygon = Path(rgbcx_vertices)
 

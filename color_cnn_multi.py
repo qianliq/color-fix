@@ -6,11 +6,22 @@ from color_gamut import poly_channels_to_xy, is_in_gamut, find_closest_boundary_
 from matplotlib.path import Path
 
 def torch_poly_channels_to_xy(channels, vertices):
+    """
+    多通道分量到xy色度坐标的线性映射（torch实现）
+    channels: (N, C) tensor
+    vertices: (C, 2) numpy array or tensor
+    返回: (N, 2) tensor
+    """
     if not isinstance(vertices, torch.Tensor):
         vertices = torch.tensor(vertices, dtype=channels.dtype, device=channels.device)
     return torch.matmul(channels, vertices)
 
 def torch_xy_to_XYZ(xy, Y=1.0):
+    """
+    xy色度坐标转XYZ（torch实现）
+    xy: (N,2) tensor
+    返回: (N,3) tensor
+    """
     x = xy[:, 0]
     y = xy[:, 1]
     X = (x / y) * Y
@@ -20,6 +31,11 @@ def torch_xy_to_XYZ(xy, Y=1.0):
     return XYZ
 
 def torch_XYZ_to_Lab(XYZ):
+    """
+    XYZ转Lab（近似，D65白点，适合反向传播，torch实现）
+    XYZ: (N,3) tensor
+    返回: (N,3) tensor
+    """
     Xn = 0.95047
     Yn = 1.0
     Zn = 1.08883
@@ -40,12 +56,19 @@ def torch_XYZ_to_Lab(XYZ):
     return torch.stack([L, a, b], dim=1)
 
 def torch_rad2deg(x):
+    """弧度转角度（torch实现）"""
     return x * (180.0 / np.pi)
 
 def torch_deg2rad(x):
+    """角度转弧度（torch实现）"""
     return x * (np.pi / 180.0)
 
 def torch_deltaE2000(Lab1, Lab2):
+    """
+    CIEDE2000色差（近似，适合反向传播，torch实现）
+    Lab1, Lab2: (N,3) tensor
+    返回: (N,) tensor
+    """
     L1, a1, b1 = Lab1[:, 0], Lab1[:, 1], Lab1[:, 2]
     L2, a2, b2 = Lab2[:, 0], Lab2[:, 1], Lab2[:, 2]
 
@@ -98,7 +121,7 @@ def torch_deltaE2000(Lab1, Lab2):
     return dE
 
 class MultiChannelColorCNN(nn.Module):
-    """多通道到多通道的全连接网络"""
+    """多通道到多通道的全连接神经网络"""
     def __init__(self, in_channels, out_channels):
         super().__init__()
         self.net = nn.Sequential(
@@ -112,14 +135,15 @@ class MultiChannelColorCNN(nn.Module):
         )
     def forward(self, x):
         out = self.net(x)
+        # softmax保证输出为概率分布且和为1
         return torch.softmax(out, dim=1)
 
 def train_cnn_model_multi(train_x, train_y, vertices, epochs=200, lr=1e-2, feedback_rounds=5, feedback_batch=10, sample_weights=None):
     """
     多通道输入输出的CNN训练，损失为deltaE2000近似。
-    train_x: (N, in_channels)
-    train_y: (N, out_channels)
-    vertices: (out_channels, 2)
+    train_x: (N, in_channels) 输入通道分量
+    train_y: (N, out_channels) 目标通道分量
+    vertices: (out_channels, 2) 目标色域顶点
     """
     device = torch.device('cpu')
     in_channels = train_x.shape[1]
@@ -168,6 +192,12 @@ def train_cnn_model_multi(train_x, train_y, vertices, epochs=200, lr=1e-2, feedb
     return model
 
 def cnn_map_color_points_multi(points, model):
+    """
+    用训练好的多通道CNN模型批量映射通道分量
+    points: (N, in_channels)
+    model: 训练好的模型
+    返回: (N, out_channels)
+    """
     device = torch.device('cpu')
     x_tensor = torch.tensor(points, dtype=torch.float32).to(device)
     with torch.no_grad():
