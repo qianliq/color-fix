@@ -6,49 +6,54 @@ from color_utils import deltaE_xy
 from color_gamut import is_in_gamut, find_closest_boundary_point, std_rgb_triangle
 
 class SimpleColorCNN(nn.Module):
-    """简单的2层全连接神经网络用于xy色度点映射"""
+    """更复杂的4层全连接神经网络用于xy色度点映射"""
     def __init__(self):
         super().__init__()
         self.net = nn.Sequential(
-            nn.Linear(2, 32),
+            nn.Linear(2, 64),
             nn.ReLU(),
-            nn.Linear(32, 32),
+            nn.Linear(64, 128),
+            nn.ReLU(),
+            nn.Linear(128, 64),
+            nn.ReLU(),
+            nn.Linear(64, 32),
             nn.ReLU(),
             nn.Linear(32, 2)
         )
     def forward(self, x):
         return self.net(x)
 
-def train_cnn_model(train_x, train_y, epochs=200, lr=1e-2, feedback_rounds=5, feedback_batch=10):
+def train_cnn_model(train_x, train_y, epochs=200, lr=1e-2, feedback_rounds=5, feedback_batch=10, sample_weights=None):
     """
     训练CNN模型，主损失为MSE，监控deltaE，输出不在目标色域内时加惩罚。
-    训练后进行反馈训练，进一步修正不在色域内的点。
+    支持sample_weights对样本加权。
     """
     device = torch.device('cpu')
     model = SimpleColorCNN().to(device)
     optimizer = optim.Adam(model.parameters(), lr=lr)
     x_tensor = torch.tensor(train_x, dtype=torch.float32).to(device)
     y_tensor = torch.tensor(train_y, dtype=torch.float32).to(device)
+    if sample_weights is not None:
+        weights_tensor = torch.tensor(sample_weights, dtype=torch.float32).to(device)
+    else:
+        weights_tensor = torch.ones(len(train_x), dtype=torch.float32).to(device)
     for epoch in range(epochs):
         optimizer.zero_grad()
         out = model(x_tensor)
-        mse_loss = nn.functional.mse_loss(out, y_tensor)
+        mse = ((out - y_tensor) ** 2).sum(dim=1)
+        mse_loss = (mse * weights_tensor).mean()
         out_np = out.detach().cpu().numpy()
         y_np = y_tensor.detach().cpu().numpy()
-        deltaE_loss = 0.0
-        for i in range(out_np.shape[0]):
-            deltaE_loss += deltaE_xy(out_np[i], y_np[i])
-        deltaE_loss = deltaE_loss / out_np.shape[0]
         penalty = 0.0
         for i in range(out_np.shape[0]):
             if not is_in_gamut(out_np[i], std_rgb_triangle):
                 boundary_pt = find_closest_boundary_point(out_np[i], std_rgb_triangle)
-                penalty += np.linalg.norm(out_np[i] - boundary_pt)
-        loss = mse_loss + 10.0 * penalty / out_np.shape[0]
+                penalty += np.linalg.norm(out_np[i] - boundary_pt) * float(weights_tensor[i])
+        loss = mse_loss + 50.0 * penalty / weights_tensor.sum()  # 惩罚系数进一步提高
         loss.backward()
         optimizer.step()
         if (epoch + 1) % 10 == 0 or epoch == epochs - 1:
-            print(f"Epoch {epoch+1}/{epochs}, deltaE: {deltaE_loss:.6f}")
+            print(f"Epoch {epoch+1}/{epochs}, weighted MSE: {mse_loss.item():.6f}")
     # 反馈训练
     for round in range(feedback_rounds):
         idx = np.random.choice(len(train_x), feedback_batch, replace=False)

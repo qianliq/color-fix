@@ -17,17 +17,37 @@ std_rgb_vertices = np.array([
 ])
 std_rgb_triangle = Path(std_rgb_vertices)
 
-def is_in_gamut(xy_point, gamut_triangle):
-    """判断色度点是否在色域内"""
-    return gamut_triangle.contains_point(xy_point)
+# 4通道RGBV顶点（示例坐标，可根据实际修改）
+rgbv_vertices = np.array([
+    [0.68, 0.32],   # R
+    [0.21, 0.71],   # G
+    [0.10, 0.60],   # V
+    [0.15, 0.06]    # B
+])
+rgbv_polygon = Path(rgbv_vertices)
 
-def find_closest_boundary_point(xy_point, gamut_triangle):
-    """找到目标色域边界上最近的点"""
+# 5通道RGBCX顶点（示例坐标，可根据实际修改）
+rgbcx_vertices = np.array([
+    [0.60, 0.34],   # R
+    [0.31, 0.60],   # G
+    [0.18, 0.74],   # X
+    [0.10, 0.40],   # C
+    [0.10, 0.10]    # B
+])
+rgbcx_polygon = Path(rgbcx_vertices)
+
+def is_in_gamut(xy_point, gamut_polygon):
+    """判断色度点是否在色域多边形内"""
+    return gamut_polygon.contains_point(xy_point)
+
+def find_closest_boundary_point(xy_point, gamut_polygon):
+    """找到多边形边界上最近的点"""
     min_dist = float('inf')
     closest_point = None
-    vertices = gamut_triangle.vertices
-    for i in range(3):
-        p1, p2 = vertices[i], vertices[(i+1)%3]
+    vertices = gamut_polygon.vertices
+    n = len(vertices)
+    for i in range(n):
+        p1, p2 = vertices[i], vertices[(i+1)%n]
         def objective(t):
             pt = p1 + t * (p2 - p1)
             return np.linalg.norm(pt - xy_point)**2

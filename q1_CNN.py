@@ -82,6 +82,12 @@ if __name__ == "__main__":
     # 用CNN映射
     mapped_points, losses = batch_map_color_points(all_points, std_rgb_triangle, use_cnn=True, cnn_model=cnn_model)
 
+    # 展示CNN映射函数的权重和偏置
+    print("\nCNN模型结构与参数：")
+    print(cnn_model)
+    for name, param in cnn_model.named_parameters():
+        print(f"{name}: {param.data.numpy()}")
+
     # 可视化结果
     plot_color_mapping(all_points, mapped_points, bt2020_triangle, std_rgb_triangle)
 

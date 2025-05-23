@@ -50,3 +50,16 @@ def generate_points_outside_triangle(vertices, num_points):
         point = base_point + offset
         points.append(point)
     return np.array(points)
+
+def generate_points_in_polygon(vertices, num_points):
+    """在多边形内生成均匀分布的随机点（简单拒绝采样法）"""
+    from matplotlib.path import Path
+    polygon = Path(vertices)
+    min_x, min_y = np.min(vertices, axis=0)
+    max_x, max_y = np.max(vertices, axis=0)
+    points = []
+    while len(points) < num_points:
+        xy = np.random.uniform([min_x, min_y], [max_x, max_y])
+        if polygon.contains_point(xy):
+            points.append(xy)
+    return np.array(points)
