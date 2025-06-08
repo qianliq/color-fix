@@ -1,17 +1,24 @@
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.patches import PathPatch
+import copy
+from matplotlib.path import Path
 
 from color_gamut import bt2020_vertices, bt2020_triangle, poly_channels_to_xy, std_rgb_vertices, std_rgb_triangle, is_in_gamut, find_closest_boundary_point, xy_to_poly_channels
-from color_utils import generate_points_in_triangle, generate_points_outside_triangle
+from color_utils import generate_points_in_triangle, generate_points_outside_triangle, deltaE_xy, loss_function
 from color_cnn import train_cnn_model, cnn_map_color_points
 
 # ==================== 可调参数 ====================
-NUM_IN_POINTS = 10000         # BT2020色域内采样点数
+NUM_IN_POINTS = 100         # BT2020色域内采样点数
 EPOCHS = 3000                 # CNN训练轮数
 LEARNING_RATE = 1e-2         # 学习率
 FEEDBACK_ROUNDS = 0          # 反馈训练轮数
 FEEDBACK_BATCH = 10          # 每轮反馈采样点数
+
+# ========== 敏感性分析参数 ===========
+SENS_NUM = 5  # 扰动组数，可根据需要调整
+PERTURB_STD = 0.01  # 每个顶点xy扰动标准差
+
 
 def batch_map_color_points(points, gamut_triangle, use_cnn=False, cnn_model=None):
     """
@@ -56,6 +63,46 @@ def plot_color_mapping(original_points, mapped_points, src_triangle, dst_triangl
     ax.grid(True, linestyle='--', alpha=0.5)
     plt.tight_layout()
     plt.show()
+
+def perturb_vertices(vertices, std=0.01):
+    """对色域顶点加高斯扰动，返回新顶点"""
+    perturbed = vertices + np.random.normal(0, std, vertices.shape)
+    return perturbed
+
+def sensitivity_analysis():
+    all_deltaEs = []
+    for i in range(SENS_NUM):
+        # 1. 扰动目标色域顶点
+        perturbed_vertices = perturb_vertices(std_rgb_vertices, std=PERTURB_STD)
+        perturbed_triangle = Path(perturbed_vertices)
+        # 2. 生成目标点（xy）
+        train_targets = []
+        for pt in train_points:
+            if is_in_gamut(pt, perturbed_triangle):
+                train_targets.append(pt)
+            else:
+                train_targets.append(find_closest_boundary_point(pt, perturbed_triangle))
+        train_targets = np.array(train_targets)
+        # 3. xy转三通道分量
+        train_targets_channels = np.array([xy_to_poly_channels(xy, perturbed_vertices) for xy in train_targets])
+        # 4. 训练CNN
+        cnn_model = train_cnn_model(
+            train_points_channels, train_targets_channels,
+            epochs=EPOCHS, lr=LEARNING_RATE,
+            feedback_rounds=FEEDBACK_ROUNDS, feedback_batch=FEEDBACK_BATCH
+        )
+        # 5. 用CNN映射
+        mapped_channels, _ = batch_map_color_points(train_points_channels, perturbed_triangle, use_cnn=True, cnn_model=cnn_model)
+        mapped_points = np.array([poly_channels_to_xy(c, perturbed_vertices) for c in mapped_channels])
+        # 6. 计算deltaE
+        deltaEs = np.array([deltaE_xy(train_points[j], mapped_points[j]) for j in range(len(train_points))])
+        all_deltaEs.append(deltaEs)
+        print(f"第{i+1}组扰动完成，平均deltaE: {np.mean(deltaEs):.4f}")
+    all_deltaEs = np.array(all_deltaEs)  # shape: (SENS_NUM, N)
+    std_per_point = np.std(all_deltaEs, axis=0)  # 每个点的std
+    mean_std = np.mean(std_per_point)
+    print(f"\n敏感性分析：{SENS_NUM}组扰动下，所有点的deltaE标准差均值为: {mean_std:.6f}")
+    return all_deltaEs, std_per_point, mean_std
 
 if __name__ == "__main__":
     # 生成测试数据
@@ -102,3 +149,6 @@ if __name__ == "__main__":
         rgb_out = xy_to_poly_channels(mapped_points[i], std_rgb_vertices)
         print(f"原始点xy: {train_points[i]}, 映射点xy: {mapped_points[i]}, 损失: {losses[i]:.4f}")
         print(f"原始RGB: {rgb_in}, 映射RGB: {rgb_out}")
+
+    # ====== 敏感性分析 ======
+    all_deltaEs, std_per_point, mean_std = sensitivity_analysis()
