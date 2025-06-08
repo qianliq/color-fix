@@ -141,6 +141,10 @@ main_blocks_after += [
 
 # ========== 合并12个色块到一起展示 ==========
 
+# 输出图片说明：
+# 第一行（前8个）：校正前的主色块（红、绿、蓝）、三原色混合块（黄、青、品红）、红蓝渐变、灰度渐变。
+# 第二行（后8个）：对应的校正后色块。可以直观对比校正前后颜色的变化和改善效果。
+
 titles_before = [
     "Before - Red", "Before - Green", "Before - Blue",
     "Before - Yellow", "Before - Cyan", "Before - Magenta",
@@ -165,4 +169,48 @@ for i, ax in enumerate(axes.flat):
         ax.axis('off')
     ax.axis('off')
 plt.tight_layout()
+plt.show()
+
+def compute_mse(a, b):
+    return np.mean((a.astype(np.float32) - b.astype(np.float32)) ** 2)
+
+# ========== 敏感性分析 ==========
+
+EPOCHS_list = [500, 1000, 2000]
+LEARNING_RATE_list = [1e-3, 1e-2, 5e-2]
+results = []
+
+for epochs in EPOCHS_list:
+    for lr in LEARNING_RATE_list:
+        print(f"敏感性分析: EPOCHS={epochs}, LR={lr}")
+        # 训练模型
+        cnn_model = train_cnn_model(
+            actual_rgb_norm, target_rgb_norm,
+            epochs=epochs, lr=lr,
+            feedback_rounds=FEEDBACK_ROUNDS, feedback_batch=FEEDBACK_BATCH
+        )
+        # 校正
+        mapped_rgb_norm = cnn_map_color_points(actual_rgb_norm, cnn_model)
+        mapped_rgb_norm = np.nan_to_num(mapped_rgb_norm, nan=0.0, posinf=1.0, neginf=0.0)
+        corrected_rgb_uint8 = (mapped_rgb_norm * 255).clip(0, 255).astype(np.uint8)
+        # 计算MSE
+        mse = compute_mse(corrected_rgb_uint8, target_rgb)
+        results.append((epochs, lr, mse))
+        print(f"MSE: {mse:.2f}")
+
+# 可视化敏感性分析结果
+# 输出图片说明：
+# 横轴为训练轮数（EPOCHS），纵轴为均方误差（MSE），不同曲线对应不同学习率（LR）。
+# 曲线越低，表示模型校正效果越好。通过该图可以分析模型对训练参数的敏感性。
+
+import pandas as pd
+df = pd.DataFrame(results, columns=['EPOCHS', 'LR', 'MSE'])
+pivot = df.pivot(index='EPOCHS', columns='LR', values='MSE')
+plt.figure(figsize=(8,5))
+for lr in LEARNING_RATE_list:
+    plt.plot(EPOCHS_list, pivot[lr], marker='o', label=f'LR={lr}')
+plt.xlabel('EPOCHS')
+plt.ylabel('MSE')
+plt.title('敏感性分析: EPOCHS & LEARNING_RATE 对MSE影响')
+plt.legend()
 plt.show()
